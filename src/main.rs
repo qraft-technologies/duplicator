@@ -2,7 +2,7 @@ use std::{
     io::{BufRead, Write},
     net::{SocketAddrV4, TcpListener, TcpStream},
     sync::mpsc::{Receiver, Sender},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use structopt::StructOpt;
 
@@ -40,14 +40,24 @@ fn tcp_rx_loop(bind_address: SocketAddrV4, txs: Vec<Sender<Vec<u8>>>) {
             let mut buf = Vec::with_capacity(BUF_SIZE);
 
             while let Ok(read @ 1..=BUF_SIZE) = reader.read_until(TCP_LAST_DELIM, &mut buf) {
-                let message = buf[..read].to_vec();
+                buf.truncate(read - TCP_DELIMITER.len());
+                buf.extend_from_slice(epoch_now().to_string().as_bytes());
+                buf.extend_from_slice(&TCP_DELIMITER);
                 for tx in &txs {
-                    tx.send(message.clone()).unwrap()
+                    tx.send(buf.to_vec()).unwrap()
                 }
                 buf.clear();
             }
         }
     }
+}
+
+/// Returns duration since UNIX_EPOCH in millisecconds.
+pub fn epoch_now() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("durationsince with UNIX_EPOCH never fails.")
+        .as_millis()
 }
 
 fn main() {
