@@ -14,6 +14,7 @@ struct Opt {
 
 fn tcp_tx_loop(forward_address: SocketAddrV4, rx: Receiver<Vec<u8>>) {
     loop {
+        println!("[tx][{forward_address}] waiting for server...");
         if let Ok(mut stream) = TcpStream::connect(forward_address) {
             loop {
                 let msg = rx.recv().unwrap();
@@ -23,8 +24,16 @@ fn tcp_tx_loop(forward_address: SocketAddrV4, rx: Receiver<Vec<u8>>) {
                 }
             }
         }
-        std::thread::sleep(Duration::from_secs(1));
-        while rx.try_recv().is_ok() {}
+        println!("[tx][{forward_address}] sleep 5 seoncds...");
+        std::thread::sleep(Duration::from_secs(5));
+
+        let st = SystemTime::now();
+        let mut i = 0;
+        while rx.try_recv().is_ok() {
+            i += 1;
+        }
+        let elapsed = SystemTime::now().duration_since(st).unwrap().as_secs();
+        println!("[tx][{forward_address}] discarded {i} messages during {elapsed} seconds.");
     }
 }
 
@@ -33,9 +42,11 @@ fn tcp_rx_loop(bind_address: SocketAddrV4, txs: Vec<Sender<Vec<u8>>>) {
     const TCP_LAST_DELIM: u8 = TCP_DELIMITER[TCP_DELIMITER.len() - 1];
     const BUF_SIZE: usize = 4096;
 
-    let tcp_listener = TcpListener::bind(bind_address).unwrap();
     loop {
+        let tcp_listener = TcpListener::bind(bind_address).unwrap();
+        println!("[rx][{bind_address}] waiting for connection...");
         if let Ok((tcp_stream, _)) = tcp_listener.accept() {
+            println!("[rx][{bind_address}] connection accepted.");
             let mut reader = std::io::BufReader::new(tcp_stream);
             let mut buf = Vec::with_capacity(BUF_SIZE);
 
@@ -49,6 +60,8 @@ fn tcp_rx_loop(bind_address: SocketAddrV4, txs: Vec<Sender<Vec<u8>>>) {
                 buf.clear();
             }
         }
+        println!("[rx][{bind_address}] sleep 5 second...");
+        std::thread::sleep(Duration::from_secs(5));
     }
 }
 
