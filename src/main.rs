@@ -19,7 +19,7 @@ fn tcp_tx_loop(forward_address: SocketAddrV4, rx: Receiver<Vec<u8>>) {
             loop {
                 let msg = rx.recv().unwrap();
                 if let Err(e) = stream.write_all(&msg) {
-                    eprintln!("{}", e);
+                    println!("[tx][{forward_address}] Error: {}", e);
                     break;
                 }
             }
