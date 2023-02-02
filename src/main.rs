@@ -1,5 +1,5 @@
 use std::{
-    io::{BufRead, ErrorKind, Write},
+    io::{BufRead, Write},
     net::{SocketAddrV4, TcpListener, TcpStream},
     sync::mpsc::{Receiver, Sender},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -37,48 +37,9 @@ fn tcp_tx_loop(forward_address: SocketAddrV4, rx: Receiver<Vec<u8>>) {
     }
 }
 
-fn read_until<R: BufRead + ?Sized, const N: usize>(
-    r: &mut R,
-    delim: [u8; N],
-    buf: &mut Vec<u8>,
-) -> std::io::Result<usize> {
-    let mut read = 0;
-    loop {
-        let (done, used) = {
-            let available = match r.fill_buf() {
-                Ok(n) => n,
-                Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e),
-            };
-            match memchr::memchr(delim[N - 1], available) {
-                Some(i) => {
-                    buf.extend_from_slice(&available[..=i]);
-                    let done = if (buf.len() >= delim.len())
-                        && (buf[buf.len() - delim.len()..] == delim)
-                    {
-                        true
-                    } else {
-                        false
-                    };
-                    (done, i + 1)
-                }
-                None => {
-                    buf.extend_from_slice(available);
-                    (false, available.len())
-                }
-            }
-        };
-        r.consume(used);
-        read += used;
-        if done || used == 0 {
-            return Ok(read);
-        }
-    }
-}
-
 fn tcp_rx_loop(bind_address: SocketAddrV4, txs: Vec<Sender<Vec<u8>>>) {
-    const TCP_DELIMITER: [u8; 3] = [255, 13, 10];
     const BUF_SIZE: usize = 4096;
+    const DELIMITER: u8 = 255;
 
     loop {
         let tcp_listener = TcpListener::bind(bind_address).unwrap();
@@ -88,10 +49,10 @@ fn tcp_rx_loop(bind_address: SocketAddrV4, txs: Vec<Sender<Vec<u8>>>) {
             let mut reader = std::io::BufReader::new(tcp_stream);
             let mut buf = Vec::with_capacity(BUF_SIZE);
 
-            while let Ok(read @ 1..=BUF_SIZE) = read_until(&mut reader, TCP_DELIMITER, &mut buf) {
-                buf.truncate(read - TCP_DELIMITER.len());
+            while let Ok(read @ 1..=BUF_SIZE) = reader.read_until(DELIMITER, &mut buf) {
+                buf.truncate(read - 1);
                 buf.extend_from_slice(epoch_now().to_string().as_bytes());
-                buf.extend_from_slice(&TCP_DELIMITER);
+                buf.push(DELIMITER);
                 for tx in &txs {
                     tx.send(buf.to_vec()).unwrap()
                 }
